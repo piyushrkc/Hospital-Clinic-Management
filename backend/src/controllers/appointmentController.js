@@ -1,0 +1,553 @@
+// src/controllers/appointmentController.js
+const Appointment = require('../models/Appointment');
+const User = require('../models/User');
+const mongoose = require('mongoose');
+
+// Get all appointments with filtering options
+exports.getAppointments = async (req, res) => {
+  try {
+    const {
+      doctorId,
+      patientId,
+      date,
+      status,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    // Base query object
+    const query = { hospital: req.user.hospital };
+
+    // Add filters if provided
+    if (doctorId) query.doctor = doctorId;
+    if (patientId) query.patient = patientId;
+    if (status) query.status = status;
+    
+    // Filter by specific date
+    if (date) {
+      const searchDate = new Date(date);
+      query.appointmentDate = {
+        $gte: new Date(searchDate.setHours(0, 0, 0, 0)),
+        $lt: new Date(searchDate.setHours(23, 59, 59, 999))
+      };
+    }
+    
+    // Filter by date range
+    if (startDate && endDate) {
+      query.appointmentDate = {
+        $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
+        $lt: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      };
+    }
+
+    // Role-based access control
+    if (req.user.role === 'patient') {
+      query.patient = req.user.userId;
+    } else if (req.user.role === 'doctor') {
+      query.doctor = req.user.userId;
+    }
+
+    // Calculate pagination values
+    const skip = (page - 1) * limit;
+    
+    // Execute query with pagination
+    const appointments = await Appointment.find(query)
+      .populate('patient', 'firstName lastName email phoneNumber')
+      .populate('doctor', 'firstName lastName specialization')
+      .sort({ appointmentDate: 1, startTime: 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    // Get total count for pagination
+    const totalAppointments = await Appointment.countDocuments(query);
+    
+    res.status(200).json({
+      success: true,
+      count: appointments.length,
+      total: totalAppointments,
+      totalPages: Math.ceil(totalAppointments / limit),
+      currentPage: parseInt(page),
+      appointments
+    });
+  } catch (error) {
+    console.error('Error fetching appointments:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch appointments',
+      error: error.message
+    });
+  }
+};
+
+// Get appointment by ID
+exports.getAppointmentById = async (req, res) => {
+  try {
+    const appointment = await Appointment.findById(req.params.id)
+      .populate('patient', 'firstName lastName email phoneNumber profileImage')
+      .populate('doctor', 'firstName lastName specialization profileImage')
+      .populate('createdBy', 'firstName lastName');
+    
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Appointment not found'
+      });
+    }
+
+    // Check if user has permission to view the appointment
+    if (
+      req.user.role === 'patient' && appointment.patient._id.toString() !== req.user.userId &&
+      req.user.role === 'doctor' && appointment.doctor._id.toString() !== req.user.userId &&
+      req.user.role !== 'admin' && req.user.role !== 'receptionist'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this appointment'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      appointment
+    });
+  } catch (error) {
+    console.error('Error fetching appointment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch appointment',
+      error: error.message
+    });
+  }
+};
+
+// Create new appointment
+exports.createAppointment = async (req, res) => {
+  try {
+    const {
+      doctorId,
+      patientId,
+      appointmentDate,
+      startTime,
+      endTime,
+      reason,
+      notes,
+      priority,
+      isFollowUp,
+      previousAppointment
+    } = req.body;
+
+    // Check if patient and doctor exist and are valid
+    const doctor = await User.findOne({ _id: doctorId, role: 'doctor', isActive: true });
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Doctor not found or inactive'
+      });
+    }
+
+    // Check if patientId is provided or use currently logged in user
+    let finalPatientId = patientId;
+    if (!finalPatientId && req.user.role === 'patient') {
+      finalPatientId = req.user.userId;
+    }
+
+    const patient = await User.findOne({ _id: finalPatientId, role: 'patient', isActive: true });
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found or inactive'
+      });
+    }
+
+    // Check for double booking
+    const appointmentDateObj = new Date(appointmentDate);
+    const existingAppointment = await Appointment.findOne({
+      doctor: doctorId,
+      appointmentDate: {
+        $gte: new Date(appointmentDateObj.setHours(0, 0, 0, 0)),
+        $lt: new Date(appointmentDateObj.setHours(23, 59, 59, 999))
+      },
+      startTime: startTime,
+      status: { $nin: ['canceled', 'no-show'] }
+    });
+
+    if (existingAppointment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor already has an appointment scheduled at this time'
+      });
+    }
+
+    // Create new appointment
+    const appointment = new Appointment({
+      patient: finalPatientId,
+      doctor: doctorId,
+      hospital: req.user.hospitalId,
+      appointmentDate,
+      startTime,
+      endTime,
+      reason,
+      notes,
+      priority: priority || 'normal',
+      isFollowUp: isFollowUp || false,
+      previousAppointment: isFollowUp ? previousAppointment : null,
+      createdBy: req.user.userId
+    });
+
+    await appointment.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Appointment created successfully',
+      data: appointment
+    });
+  } catch (error) {
+    console.error('Error creating appointment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create appointment',
+      error: error.message
+    });
+  }
+};
+
+// Update appointment
+exports.updateAppointment = async (req, res) => {
+  try {
+    const {
+      appointmentDate,
+      startTime,
+      endTime,
+      status,
+      reason,
+      notes,
+      priority
+    } = req.body;
+
+    const appointment = await Appointment.findById(req.params.id);
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Appointment not found'
+      });
+    }
+
+    // Check permission to update
+    if (
+      req.user.role === 'patient' && appointment.patient.toString() !== req.user.userId &&
+      req.user.role === 'doctor' && appointment.doctor.toString() !== req.user.userId &&
+      req.user.role !== 'admin' && req.user.role !== 'receptionist'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this appointment'
+      });
+    }
+
+    // Check for double booking if date or time is being changed
+    if ((appointmentDate && appointmentDate !== appointment.appointmentDate.toISOString().split('T')[0]) || 
+        (startTime && startTime !== appointment.startTime)) {
+      
+      const appointmentDateObj = new Date(appointmentDate || appointment.appointmentDate);
+      const existingAppointment = await Appointment.findOne({
+        _id: { $ne: appointment._id }, // exclude current appointment
+        doctor: appointment.doctor,
+        appointmentDate: {
+          $gte: new Date(appointmentDateObj.setHours(0, 0, 0, 0)),
+          $lt: new Date(appointmentDateObj.setHours(23, 59, 59, 999))
+        },
+        startTime: startTime || appointment.startTime,
+        status: { $nin: ['canceled', 'no-show'] }
+      });
+
+      if (existingAppointment) {
+        return res.status(400).json({
+          success: false,
+          message: 'Doctor already has an appointment scheduled at this time'
+        });
+      }
+    }
+
+    // Update fields
+    if (appointmentDate) appointment.appointmentDate = appointmentDate;
+    if (startTime) appointment.startTime = startTime;
+    if (endTime) appointment.endTime = endTime;
+    if (status) appointment.status = status;
+    if (reason) appointment.reason = reason;
+    if (notes) appointment.notes = notes;
+    if (priority) appointment.priority = priority;
+
+    await appointment.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Appointment updated successfully',
+      data: appointment
+    });
+  } catch (error) {
+    console.error('Error updating appointment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update appointment',
+      error: error.message
+    });
+  }
+};
+
+// Cancel appointment
+exports.cancelAppointment = async (req, res) => {
+  try {
+    const { cancellationReason } = req.body;
+    
+    const appointment = await Appointment.findById(req.params.id);
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Appointment not found'
+      });
+    }
+
+    // Check permission to cancel
+    if (
+      req.user.role === 'patient' && appointment.patient.toString() !== req.user.userId &&
+      req.user.role === 'doctor' && appointment.doctor.toString() !== req.user.userId &&
+      req.user.role !== 'admin' && req.user.role !== 'receptionist'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to cancel this appointment'
+      });
+    }
+
+    // Can't cancel completed appointments
+    if (appointment.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot cancel a completed appointment'
+      });
+    }
+
+    // Update status and add cancellation note
+    appointment.status = 'canceled';
+    appointment.notes = appointment.notes 
+      ? `${appointment.notes}\n\nCancellation Reason: ${cancellationReason}`
+      : `Cancellation Reason: ${cancellationReason}`;
+
+    await appointment.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Appointment cancelled successfully',
+      data: appointment
+    });
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cancel appointment',
+      error: error.message
+    });
+  }
+};
+
+// Delete appointment (admin only)
+exports.deleteAppointment = async (req, res) => {
+  try {
+    // Only admin should be able to delete
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can delete appointments'
+      });
+    }
+
+    const appointment = await Appointment.findById(req.params.id);
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Appointment not found'
+      });
+    }
+
+    await Appointment.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Appointment deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting appointment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete appointment',
+      error: error.message
+    });
+  }
+};
+
+// Get doctor's schedule/availability
+exports.getDoctorSchedule = async (req, res) => {
+  try {
+    const { doctorId, date, weekStart } = req.query;
+
+    if (!doctorId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor ID is required'
+      });
+    }
+
+    // Verify that doctor exists
+    const doctor = await User.findOne({ _id: doctorId, role: 'doctor', isActive: true });
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Doctor not found or inactive'
+      });
+    }
+
+    let startDate, endDate;
+
+    if (weekStart) {
+      // If weekStart provided, get appointments for the whole week
+      startDate = new Date(weekStart);
+      endDate = new Date(weekStart);
+      endDate.setDate(endDate.getDate() + 7);
+    } else if (date) {
+      // If specific date, get appointments for that day
+      startDate = new Date(date);
+      endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1);
+    } else {
+      // Default to today
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    // Get all appointments for the doctor in the date range
+    const appointments = await Appointment.find({
+      doctor: doctorId,
+      appointmentDate: {
+        $gte: startDate,
+        $lt: endDate
+      },
+      status: { $nin: ['canceled', 'no-show'] }
+    }).select('appointmentDate startTime endTime status');
+
+    res.status(200).json({
+      success: true,
+      doctorId,
+      timeframe: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      },
+      appointments
+    });
+  } catch (error) {
+    console.error('Error fetching doctor schedule:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch doctor schedule',
+      error: error.message
+    });
+  }
+};
+
+// Get appointment statistics (admin, doctor)
+exports.getAppointmentStats = async (req, res) => {
+  try {
+    // Check permissions
+    if (!['admin', 'doctor', 'receptionist'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to access appointment statistics'
+      });
+    }
+
+    const { startDate, endDate, doctorId } = req.query;
+    
+    // Calculate date range (default to last 30 days if not specified)
+    const endDateObj = endDate ? new Date(endDate) : new Date();
+    endDateObj.setHours(23, 59, 59, 999);
+    
+    const startDateObj = startDate ? new Date(startDate) : new Date();
+    if (!startDate) {
+      startDateObj.setDate(startDateObj.getDate() - 30);
+    }
+    startDateObj.setHours(0, 0, 0, 0);
+
+    // Base match criteria
+    const matchCriteria = {
+      hospital: mongoose.Types.ObjectId(req.user.hospitalId),
+      appointmentDate: {
+        $gte: startDateObj,
+        $lte: endDateObj
+      }
+    };
+
+    // Add doctor filter if requested and if admin/receptionist
+    if (doctorId && ['admin', 'receptionist'].includes(req.user.role)) {
+      matchCriteria.doctor = mongoose.Types.ObjectId(doctorId);
+    } else if (req.user.role === 'doctor') {
+      // If doctor is requesting, only show their appointments
+      matchCriteria.doctor = mongoose.Types.ObjectId(req.user.userId);
+    }
+
+    // Aggregate to get statistics
+    const stats = await Appointment.aggregate([
+      { $match: matchCriteria },
+      { $group: {
+        _id: '$status',
+        count: { $sum: 1 }
+      }},
+      { $project: {
+        _id: 0,
+        status: '$_id',
+        count: 1
+      }}
+    ]);
+
+    // Get total appointments
+    const total = await Appointment.countDocuments(matchCriteria);
+
+    // Get appointments by date for chart
+    const appointmentsByDate = await Appointment.aggregate([
+      { $match: matchCriteria },
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$appointmentDate' } },
+        count: { $sum: 1 }
+      }},
+      { $sort: { _id: 1 } },
+      { $project: {
+        _id: 0,
+        date: '$_id',
+        count: 1
+      }}
+    ]);
+
+    res.status(200).json({
+      success: true,
+      timeframe: {
+        startDate: startDateObj,
+        endDate: endDateObj
+      },
+      total,
+      stats,
+      appointmentsByDate
+    });
+  } catch (error) {
+    console.error('Error fetching appointment statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch appointment statistics',
+      error: error.message
+    });
+  }
+};
