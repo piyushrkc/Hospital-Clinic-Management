@@ -1,134 +1,77 @@
-// backend/src/models/Medication.js
 const mongoose = require('mongoose');
 
-const MedicationSchema = new mongoose.Schema({
+const medicationSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: true
+    required: [true, 'Medication name is required'],
+    unique: true
   },
-  genericName: {
-    type: String,
-    required: true
-  },
-  brand: {
-    type: String
-  },
+  genericName: String,
   category: {
     type: String,
-    required: true
+    required: [true, 'Medication category is required']
   },
-  form: {
+  manufacturer: String,
+  description: String,
+  dosageForm: {
     type: String,
-    enum: ['tablet', 'capsule', 'liquid', 'injection', 'cream', 'ointment', 'drops', 'inhaler', 'powder', 'other'],
-    required: true
+    required: [true, 'Dosage form is required'],
+    enum: ['tablet', 'capsule', 'liquid', 'injection', 'cream', 'ointment', 'drops', 'inhaler', 'spray', 'patch', 'suppository', 'other']
   },
   strength: {
-    value: Number,
-    unit: String
-  },
-  hospital: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true
-  },
-  manufacturer: {
-    type: String
-  },
-  description: {
-    type: String
-  },
-  sideEffects: {
-    type: String
-  },
-  contraindications: {
-    type: String
-  },
-  dosageInstructions: {
-    type: String
-  },
-  inventory: {
-    currentStock: {
-      type: Number,
-      default: 0
-    },
-    unitOfMeasure: {
-      type: String,
-      default: 'units'
-    },
-    batchNumber: {
-      type: String
-    },
-    expiryDate: {
-      type: Date
-    },
-    reorderLevel: {
-      type: Number,
-      default: 10
-    },
-    location: {
-      type: String
-    }
-  },
-  pricing: {
-    costPrice: {
-      type: Number,
-      required: true
-    },
-    sellingPrice: {
-      type: Number,
-      required: true
-    },
-    currency: {
-      type: String,
-      default: 'USD'
-    }
-  },
-  suppliers: [{
-    name: String,
-    contactInfo: String,
-    preferredSupplier: Boolean
-  }],
-  status: {
     type: String,
-    enum: ['active', 'low-stock', 'out-of-stock', 'discontinued', 'expired'],
-    default: 'active'
+    required: [true, 'Medication strength is required']
   },
-  needsPrescription: {
+  activeIngredient: String,
+  contraindications: [String],
+  sideEffects: [String],
+  interactions: [String],
+  storageConditions: String,
+  price: {
+    type: Number,
+    required: [true, 'Price is required']
+  },
+  taxRate: {
+    type: Number,
+    default: 0
+  },
+  barcode: String,
+  prescriptionRequired: {
     type: Boolean,
     default: true
   },
-  image: {
-    type: String
+  controlled: {
+    type: Boolean,
+    default: false
   },
-  barcode: {
-    type: String
+  image: String,
+  isActive: {
+    type: Boolean,
+    default: true
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Pre-save hook to update status based on current stock
-MedicationSchema.pre('save', function(next) {
-  if (this.inventory.currentStock <= 0) {
-    this.status = 'out-of-stock';
-  } else if (this.inventory.currentStock <= this.inventory.reorderLevel) {
-    this.status = 'low-stock';
-  } else if (this.inventory.expiryDate && new Date(this.inventory.expiryDate) < new Date()) {
-    this.status = 'expired';
-  } else {
-    this.status = 'active';
-  }
-  next();
+// Indexing for faster queries
+medicationSchema.index({ name: 1 });
+medicationSchema.index({ category: 1 });
+medicationSchema.index({ activeIngredient: 1 });
+
+// Virtual populate inventory
+medicationSchema.virtual('inventory', {
+  ref: 'Inventory',
+  foreignField: 'medication',
+  localField: '_id'
 });
 
-// Indexes for efficient querying
-MedicationSchema.index({ name: 1 });
-MedicationSchema.index({ genericName: 1 });
-MedicationSchema.index({ hospital: 1 });
-MedicationSchema.index({ category: 1 });
-MedicationSchema.index({ status: 1 });
-MedicationSchema.index({ 'inventory.expiryDate': 1 });
+// Calculate total price including tax
+medicationSchema.virtual('totalPrice').get(function() {
+  return this.price * (1 + this.taxRate / 100);
+});
 
-const Medication = mongoose.model('Medication', MedicationSchema);
+const Medication = mongoose.model('Medication', medicationSchema);
 
 module.exports = Medication;

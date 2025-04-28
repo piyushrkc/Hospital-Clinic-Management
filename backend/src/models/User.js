@@ -1,100 +1,117 @@
-// src/models/User.js
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
-const UserSchema = new mongoose.Schema({
-  firstName: {
+const userSchema = new mongoose.Schema({
+  name: {
     type: String,
-    required: true,
-    trim: true
-  },
-  lastName: {
-    type: String,
-    required: true,
-    trim: true
+    required: [true, 'Name is required']
   },
   email: {
     type: String,
-    required: true,
+    required: [true, 'Email is required'],
     unique: true,
-    trim: true,
-    lowercase: true
+    lowercase: true,
+    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email']
   },
   password: {
     type: String,
-    required: true,
-    minlength: 6
+    required: [true, 'Password is required'],
+    minlength: 8,
+    select: false
   },
-  phoneNumber: {
+  passwordConfirm: {
     type: String,
-    required: true
+    required: [true, 'Please confirm your password'],
+    validate: {
+      // This only works on CREATE and SAVE
+      validator: function(el) {
+        return el === this.password;
+      },
+      message: 'Passwords do not match'
+    }
   },
   role: {
     type: String,
-    enum: ['patient', 'doctor', 'admin', 'labTechnician', 'pharmacist', 'receptionist', 'superAdmin'],
+    enum: ['patient', 'doctor', 'nurse', 'lab_technician', 'pharmacist', 'accountant', 'staff', 'admin'],
     default: 'patient'
   },
-  hospital: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true
-  },
-  specialization: {
-    type: String,
-    required: function() {
-      return this.role === 'doctor';
-    }
-  },
-  licenseNumber: {
-    type: String,
-    required: function() {
-      return ['doctor', 'labTechnician', 'pharmacist'].includes(this.role);
-    }
-  },
-  profileImage: {
-    type: String
-  },
-  isActive: {
+  photo: String,
+  phoneNumber: String,
+  passwordChangedAt: Date,
+  passwordResetToken: String,
+  passwordResetExpires: Date,
+  active: {
     type: Boolean,
-    default: true
+    default: true,
+    select: false
   },
-  lastLogin: {
-    type: Date
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
-  timestamps: true
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Pre-save hook to hash password
-UserSchema.pre('save', async function(next) {
-  const user = this;
-  
-  // Only hash the password if it's been modified or is new
-  if (!user.isModified('password')) return next();
-  
-  try {
-    // Generate salt
-    const salt = await bcrypt.genSalt(10);
-    // Hash the password with the salt
-    user.password = await bcrypt.hash(user.password, salt);
-    next();
-  } catch (error) {
-    next(error);
+// Pre-save hook to encrypt the password
+userSchema.pre('save', async function(next) {
+  // Only run this function if password was actually modified
+  if (!this.isModified('password')) return next();
+
+  // Hash the password with cost of 12
+  this.password = await bcrypt.hash(this.password, 12);
+
+  // Delete passwordConfirm field
+  this.passwordConfirm = undefined;
+  next();
+});
+
+// Pre-save hook to update passwordChangedAt
+userSchema.pre('save', function(next) {
+  if (!this.isModified('password') || this.isNew) return next();
+
+  this.passwordChangedAt = Date.now() - 1000;
+  next();
+});
+
+// Pre-find query to filter out inactive users
+userSchema.pre(/^find/, function(next) {
+  // this points to the current query
+  this.find({ active: { $ne: false } });
+  next();
+});
+
+// Instance method to check if password is correct
+userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
+  return await bcrypt.compare(candidatePassword, userPassword);
+};
+
+// Instance method to check if password changed after token issued
+userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
+  if (this.passwordChangedAt) {
+    const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+    return JWTTimestamp < changedTimestamp;
   }
-});
-
-// Method to compare password
-UserSchema.methods.comparePassword = async function(candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
+  // False means NOT changed
+  return false;
 };
 
-// Method to return user data without sensitive information
-UserSchema.methods.toJSON = function() {
-  const user = this.toObject();
-  delete user.password;
-  return user;
+// Instance method to generate password reset token
+userSchema.methods.createPasswordResetToken = function() {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+  return resetToken;
 };
 
-const User = mongoose.model('User', UserSchema);
+const User = mongoose.model('User', userSchema);
 
 module.exports = User;

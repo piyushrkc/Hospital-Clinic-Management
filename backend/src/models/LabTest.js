@@ -1,144 +1,78 @@
-// backend/src/models/LabTest.js
 const mongoose = require('mongoose');
 
-const TestResultSchema = new mongoose.Schema({
-  parameter: {
-    type: String,
-    required: true
-  },
-  value: {
-    type: String,
-    required: true
-  },
-  unit: {
-    type: String
-  },
-  referenceRange: {
-    min: Number,
-    max: Number,
-    text: String
-  },
-  flag: {
-    type: String,
-    enum: ['normal', 'low', 'high', 'critical-low', 'critical-high'],
-    default: 'normal'
-  },
-  notes: {
-    type: String
-  }
-});
-
-const LabTestSchema = new mongoose.Schema({
+const labTestSchema = new mongoose.Schema({
   patient: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  doctor: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  hospital: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true
-  },
-  appointment: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Appointment'
+    ref: 'Patient',
+    required: [true, 'Lab test must belong to a patient']
   },
   testType: {
     type: String,
-    required: true
+    required: [true, 'Test type is required']
   },
-  category: {
+  testCode: String,
+  orderedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor',
+    required: [true, 'Lab test must be ordered by a doctor']
+  },
+  status: {
     type: String,
-    enum: ['hematology', 'biochemistry', 'microbiology', 'pathology', 'radiology', 'other'],
-    required: true
+    enum: ['ordered', 'collected', 'processing', 'completed', 'cancelled'],
+    default: 'ordered'
   },
-  urgency: {
+  priority: {
     type: String,
     enum: ['routine', 'urgent', 'stat'],
     default: 'routine'
   },
-  status: {
+  instructions: String,
+  requiredFasting: {
+    type: Boolean,
+    default: false
+  },
+  sampleCollected: {
+    type: Boolean,
+    default: false
+  },
+  sampleType: {
     type: String,
-    enum: ['ordered', 'collected', 'in-process', 'completed', 'cancelled'],
-    default: 'ordered'
+    enum: ['blood', 'urine', 'stool', 'sputum', 'tissue', 'swab', 'other']
   },
-  orderedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  orderedDate: {
-    type: Date,
-    default: Date.now
-  },
+  collectionDate: Date,
   collectedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  collectionDate: {
-    type: Date
-  },
+  processingDate: Date,
   processedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  processingDate: {
-    type: Date
-  },
-  reportedBy: {
+  completedAt: Date,
+  result: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: 'LabResult'
   },
-  reportDate: {
-    type: Date
-  },
-  results: [TestResultSchema],
-  conclusion: {
-    type: String
-  },
-  notes: {
-    type: String
-  },
-  attachments: [{
-    name: String,
-    url: String,
-    type: String
-  }],
-  isViewed: {
-    type: Boolean,
-    default: false
-  },
-  viewedBy: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    date: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  billing: {
+  bill: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Billing'
+    ref: 'Bill'
+  },
+  price: {
+    type: Number,
+    required: [true, 'Test price is required']
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Indexes for efficient querying
-LabTestSchema.index({ patient: 1, orderedDate: -1 });
-LabTestSchema.index({ doctor: 1 });
-LabTestSchema.index({ hospital: 1 });
-LabTestSchema.index({ status: 1 });
-LabTestSchema.index({ testType: 1 });
-LabTestSchema.index({ category: 1 });
+// Indexing for faster queries
+labTestSchema.index({ patient: 1, createdAt: -1 });
+labTestSchema.index({ status: 1 });
+labTestSchema.index({ testType: 1 });
 
-const LabTest = mongoose.model('LabTest', LabTestSchema);
+const LabTest = mongoose.model('LabTest', labTestSchema);
 
 module.exports = LabTest;

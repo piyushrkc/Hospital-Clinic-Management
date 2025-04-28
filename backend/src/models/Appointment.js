@@ -1,103 +1,97 @@
-// backend/src/models/Appointment.js
 const mongoose = require('mongoose');
 
-const AppointmentSchema = new mongoose.Schema({
+const appointmentSchema = new mongoose.Schema({
   patient: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ref: 'Patient',
+    required: [true, 'Appointment must belong to a patient']
   },
   doctor: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ref: 'Doctor',
+    required: [true, 'Appointment must be with a doctor']
   },
-  hospital: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true
-  },
-  date: {
+  appointmentDate: {
     type: Date,
-    required: true
+    required: [true, 'Appointment date is required']
   },
-  timeSlot: {
-    start: {
-      type: String,
-      required: true
-    },
-    end: {
-      type: String,
-      required: true
-    }
+  appointmentTime: {
+    type: String, // HH:MM format
+    required: [true, 'Appointment time is required']
   },
+  scheduledTime: Date, // Combination of date and time
   status: {
     type: String,
-    enum: ['scheduled', 'completed', 'cancelled', 'no-show'],
+    enum: ['scheduled', 'confirmed', 'completed', 'cancelled', 'no-show'],
     default: 'scheduled'
   },
   type: {
     type: String,
-    enum: ['regular', 'follow-up', 'emergency', 'telemedicine'],
+    enum: ['regular', 'follow-up', 'emergency', 'teleconsultation'],
     default: 'regular'
   },
-  reasonForVisit: {
+  reason: {
     type: String,
-    required: true
+    required: [true, 'Reason for appointment is required']
   },
-  notes: {
-    type: String
-  },
-  vitalSigns: {
-    temperature: Number,
-    bloodPressure: String,
-    heartRate: Number,
-    respiratoryRate: Number,
-    oxygenSaturation: Number,
-    height: Number,
-    weight: Number
-  },
-  attachments: [{
-    name: String,
-    url: String,
-    type: String
-  }],
-  checkedIn: {
+  notes: String,
+  symptoms: [String],
+  diagnosis: String,
+  startTime: Date, // Actual start time of appointment
+  endTime: Date, // Actual end time of appointment
+  duration: Number, // In minutes
+  followUpRecommended: {
     type: Boolean,
     default: false
   },
-  checkedInTime: {
-    type: Date
+  followUpDate: Date,
+  cancelled: {
+    by: {
+      type: String,
+      enum: ['patient', 'doctor', 'admin']
+    },
+    reason: String,
+    at: Date
   },
-  completed: {
-    type: Boolean,
-    default: false
-  },
-  completedTime: {
-    type: Date
-  },
-  prescription: {
+  bill: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Prescription'
+    ref: 'Bill'
   },
-  labTests: [{
+  createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'LabTest'
-  }],
-  billing: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Billing'
+    ref: 'User'
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Index for efficient querying
-AppointmentSchema.index({ patient: 1, date: 1 });
-AppointmentSchema.index({ doctor: 1, date: 1 });
-AppointmentSchema.index({ hospital: 1, date: 1 });
-AppointmentSchema.index({ status: 1 });
+// Indexing for faster queries
+appointmentSchema.index({ patient: 1, appointmentDate: 1 });
+appointmentSchema.index({ doctor: 1, appointmentDate: 1 });
+appointmentSchema.index({ appointmentDate: 1, status: 1 });
 
-const Appointment = mongoose.model('Appointment', AppointmentSchema);
+// Calculate scheduledTime from appointmentDate and appointmentTime
+appointmentSchema.pre('save', function(next) {
+  if (this.appointmentDate && this.appointmentTime) {
+    const [hours, minutes] = this.appointmentTime.split(':').map(Number);
+    const scheduledDate = new Date(this.appointmentDate);
+    scheduledDate.setHours(hours, minutes, 0, 0);
+    this.scheduledTime = scheduledDate;
+  }
+  next();
+});
+
+// Calculate duration if appointment is completed
+appointmentSchema.pre('save', function(next) {
+  if (this.startTime && this.endTime) {
+    const duration = (this.endTime - this.startTime) / (1000 * 60); // in minutes
+    this.duration = Math.round(duration);
+  }
+  next();
+});
+
+const Appointment = mongoose.model('Appointment', appointmentSchema);
 
 module.exports = Appointment;

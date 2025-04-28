@@ -1,112 +1,98 @@
-// backend/src/models/Prescription.js
 const mongoose = require('mongoose');
 
-const MedicationSchema = new mongoose.Schema({
-  medication: {
+const prescriptionSchema = new mongoose.Schema({
+  patient: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Medication',
-    required: true
+    ref: 'Patient',
+    required: [true, 'Prescription must belong to a patient']
   },
-  name: {
+  doctor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor',
+    required: [true, 'Prescription must be created by a doctor']
+  },
+  diagnosis: {
     type: String,
-    required: true
+    required: [true, 'Diagnosis is required']
   },
-  dosage: {
+  medications: [{
+    medication: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Medication',
+      required: [true, 'Medication reference is required']
+    },
+    dosage: {
+      type: String,
+      required: [true, 'Dosage is required']
+    },
+    frequency: {
+      type: String,
+      required: [true, 'Frequency is required']
+    },
+    duration: {
+      type: String,
+      required: [true, 'Duration is required']
+    },
+    instructions: String,
+    quantity: {
+      type: Number,
+      required: [true, 'Quantity is required']
+    }
+  }],
+  instructions: String,
+  status: {
     type: String,
-    required: true
+    enum: ['pending', 'filled', 'completed', 'denied'],
+    default: 'pending'
   },
-  frequency: {
-    type: String,
-    required: true
-  },
-  duration: {
-    type: String,
-    required: true
-  },
-  instructions: {
-    type: String
-  },
-  quantity: {
-    type: Number,
-    required: true
-  },
-  dispensed: {
-    type: Boolean,
-    default: false
-  },
+  dispensingNotes: String,
   dispensedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  dispensedDate: {
-    type: Date
-  }
-});
-
-const PrescriptionSchema = new mongoose.Schema({
-  patient: {
+  dispensedAt: Date,
+  bill: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  doctor: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  hospital: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true
+    ref: 'Bill'
   },
   appointment: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment'
   },
-  medications: [MedicationSchema],
-  diagnosis: {
-    type: String,
-    required: true
+  refillable: {
+    type: Boolean,
+    default: false
   },
-  notes: {
-    type: String
-  },
-  status: {
-    type: String,
-    enum: ['active', 'completed', 'cancelled'],
-    default: 'active'
-  },
-  issuedDate: {
-    type: Date,
-    default: Date.now
-  },
-  validUntil: {
-    type: Date
-  },
-  refillCount: {
+  refillsAllowed: {
     type: Number,
     default: 0
   },
-  maxRefills: {
+  refillsUsed: {
     type: Number,
     default: 0
   },
-  qrCode: {
-    type: String
-  },
-  digitalSignature: {
-    type: String
-  }
+  validUntil: Date
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Indexes for efficient querying
-PrescriptionSchema.index({ patient: 1, issuedDate: -1 });
-PrescriptionSchema.index({ doctor: 1, issuedDate: -1 });
-PrescriptionSchema.index({ hospital: 1 });
-PrescriptionSchema.index({ status: 1 });
+// Indexing for faster queries
+prescriptionSchema.index({ patient: 1, createdAt: -1 });
+prescriptionSchema.index({ doctor: 1, createdAt: -1 });
+prescriptionSchema.index({ status: 1 });
 
-const Prescription = mongoose.model('Prescription', PrescriptionSchema);
+// Set validUntil date based on creation date if not provided
+prescriptionSchema.pre('save', function(next) {
+  if (!this.validUntil) {
+    const validityDate = new Date(this.createdAt || Date.now());
+    validityDate.setDate(validityDate.getDate() + 30); // Valid for 30 days by default
+    this.validUntil = validityDate;
+  }
+  next();
+});
+
+const Prescription = mongoose.model('Prescription', prescriptionSchema);
 
 module.exports = Prescription;
