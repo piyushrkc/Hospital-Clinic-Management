@@ -2,10 +2,9 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const authRoutes = require('./routes/authRoutes');
+const indexRoutes = require('./routes/indexRoutes');
 
 const app = express();
-const userRoutes = require('./routes/userRoutes');
 
 // Middleware
 app.use(helmet()); // Security headers
@@ -13,7 +12,7 @@ app.use(cors()); // Enable CORS
 app.use(express.json()); // Parse JSON request body
 
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api', indexRoutes); // Use all routes defined in indexRoutes
 
 // Default route
 app.get('/', (req, res) => {
