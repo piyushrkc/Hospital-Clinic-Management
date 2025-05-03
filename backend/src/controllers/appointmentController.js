@@ -296,7 +296,166 @@ exports.updateAppointment = async (req, res) => {
     });
   }
 };
+// Add these methods to src/controllers/appointmentController.js
 
+// Check for available time slots for a doctor
+exports.getAvailableTimeSlots = async (req, res) => {
+  try {
+    const { doctorId, date } = req.query;
+    
+    if (!doctorId || !date) {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor ID and date are required'
+      });
+    }
+    
+    // Find the doctor
+    const doctor = await User.findOne({ _id: doctorId, role: 'doctor' });
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Doctor not found'
+      });
+    }
+    
+    // Get doctor's availability settings from Doctor model
+    const doctorProfile = await Doctor.findOne({ user: doctorId });
+    if (!doctorProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Doctor profile not found'
+      });
+    }
+    
+    // Get the day of the week for the requested date
+    const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'lowercase' });
+    
+    // Find the availability slot for the requested day
+    const availabilitySlot = doctorProfile.availabilitySlots.find(slot => slot.day === dayOfWeek);
+    
+    if (!availabilitySlot || !availabilitySlot.isAvailable) {
+      return res.status(200).json({
+        success: true,
+        message: 'Doctor is not available on this day',
+        availableSlots: []
+      });
+    }
+    
+    // Parse start and end times
+    const [startHour, startMinute] = availabilitySlot.startTime.split(':').map(Number);
+    const [endHour, endMinute] = availabilitySlot.endTime.split(':').map(Number);
+    
+    // Create time slots (assuming 30-minute appointments)
+    const slots = [];
+    const slotDuration = 30; // in minutes
+    const dateObj = new Date(date);
+    
+    // Set the start time
+    dateObj.setHours(startHour, startMinute, 0, 0);
+    const endTime = new Date(date);
+    endTime.setHours(endHour, endMinute, 0, 0);
+    
+    // Generate all possible time slots
+    while (dateObj < endTime) {
+      const slotStart = new Date(dateObj);
+      
+      // Add the slot duration
+      dateObj.setMinutes(dateObj.getMinutes() + slotDuration);
+      
+      if (dateObj <= endTime) {
+        slots.push({
+          startTime: slotStart.toTimeString().substring(0, 5),
+          endTime: dateObj.toTimeString().substring(0, 5)
+        });
+      }
+    }
+    
+    // Check for existing appointments to exclude booked slots
+    const existingAppointments = await Appointment.find({
+      doctor: doctorId,
+      appointmentDate: {
+        $gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
+        $lt: new Date(new Date(date).setHours(23, 59, 59, 999))
+      },
+      status: { $nin: ['canceled', 'no-show'] }
+    }).select('startTime endTime');
+    
+    // Filter out booked slots
+    const availableSlots = slots.filter(slot => {
+      return !existingAppointments.some(appointment => 
+        appointment.startTime === slot.startTime
+      );
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        availableSlots
+      }
+    });
+  } catch (error) {
+    console.error('Error getting available time slots:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get available time slots',
+      error: error.message
+    });
+  }
+};
+
+// Check for scheduling conflicts
+exports.checkSchedulingConflict = async (req, res) => {
+  try {
+    const { doctorId, appointmentDate, startTime, endTime, appointmentId } = req.body;
+    
+    if (!doctorId || !appointmentDate || !startTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor ID, appointment date, and start time are required'
+      });
+    }
+    
+    // Build query to find conflicting appointments
+    const query = {
+      doctor: doctorId,
+      appointmentDate: {
+        $gte: new Date(new Date(appointmentDate).setHours(0, 0, 0, 0)),
+        $lt: new Date(new Date(appointmentDate).setHours(23, 59, 59, 999))
+      },
+      startTime: startTime,
+      status: { $nin: ['canceled', 'no-show'] }
+    };
+    
+    // Exclude current appointment if updating
+    if (appointmentId) {
+      query._id = { $ne: appointmentId };
+    }
+    
+    const existingAppointment = await Appointment.findOne(query);
+    
+    if (existingAppointment) {
+      return res.status(200).json({
+        success: true,
+        hasConflict: true,
+        message: 'The selected time slot is already booked'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      hasConflict: false,
+      message: 'The selected time slot is available'
+    });
+  } catch (error) {
+    console.error('Error checking scheduling conflict:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check scheduling conflict',
+      error: error.message
+    });
+  }
+};
 // Cancel appointment
 exports.cancelAppointment = async (req, res) => {
   try {

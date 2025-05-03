@@ -295,7 +295,52 @@ exports.deleteUser = async (req, res) => {
     });
   }
 };
+// Add this method to src/controllers/userController.js
 
+// Get user's role-specific profile
+exports.getUserProfile = async (req, res) => {
+    try {
+      const userId = req.params.id || req.user.userId;
+      
+      const user = await User.findById(userId).select('-password');
+      
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      
+      let profile = null;
+      
+      // Get role-specific profile
+      if (user.role === 'doctor') {
+        profile = await Doctor.findOne({ user: user._id })
+          .populate('qualifications')
+          .populate('availabilitySlots');
+      } else if (user.role === 'patient') {
+        profile = await Patient.findOne({ user: user._id })
+          .populate('medicalHistory')
+          .populate('allergies')
+          .populate('prescriptions', 'status createdAt');
+      }
+      
+      res.status(200).json({
+        success: true,
+        data: {
+          user,
+          profile
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch user profile',
+        error: error.message
+      });
+    }
+  };
 // Change password
 exports.changePassword = async (req, res) => {
   try {

@@ -1,11 +1,17 @@
+// src/models/User.js
+
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema({
-  name: {
+  firstName: {
     type: String,
-    required: [true, 'Name is required']
+    required: [true, 'First name is required']
+  },
+  lastName: {
+    type: String,
+    required: [true, 'Last name is required']
   },
   email: {
     type: String,
@@ -20,51 +26,73 @@ const userSchema = new mongoose.Schema({
     minlength: 8,
     select: false
   },
-  passwordConfirm: {
-    type: String,
-    required: [true, 'Please confirm your password'],
-    validate: {
-      // This only works on CREATE and SAVE
-      validator: function(el) {
-        return el === this.password;
-      },
-      message: 'Passwords do not match'
-    }
-  },
+  phoneNumber: String,
   role: {
     type: String,
     enum: ['patient', 'doctor', 'nurse', 'lab_technician', 'pharmacist', 'accountant', 'staff', 'admin'],
     default: 'patient'
   },
-  photo: String,
-  phoneNumber: String,
-  passwordChangedAt: Date,
+  hospital: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hospital',
+    required: true
+  },
+  specialization: String,
+  licenseNumber: String,
+  dateOfBirth: Date,
+  gender: {
+    type: String,
+    enum: ['male', 'female', 'other']
+  },
+  address: {
+    street: String,
+    city: String,
+    state: String,
+    zipCode: String,
+    country: String
+  },
+  emergencyContact: {
+    name: String,
+    relationship: String,
+    phoneNumber: String
+  },
+  profileImage: String,
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  lastLogin: Date,
+  
+  // Password reset fields
   passwordResetToken: String,
   passwordResetExpires: Date,
-  active: {
+  
+  // Email verification fields
+  isEmailVerified: {
     type: Boolean,
-    default: true,
-    select: false
+    default: false
   },
+  emailVerificationToken: String,
+  emailVerificationExpires: Date,
+  
   createdAt: {
     type: Date,
     default: Date.now
   }
 }, {
+  timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
 // Pre-save hook to encrypt the password
 userSchema.pre('save', async function(next) {
-  // Only run this function if password was actually modified
+  // Only run this function if password was modified
   if (!this.isModified('password')) return next();
 
   // Hash the password with cost of 12
   this.password = await bcrypt.hash(this.password, 12);
-
-  // Delete passwordConfirm field
-  this.passwordConfirm = undefined;
+  
   next();
 });
 
@@ -79,26 +107,16 @@ userSchema.pre('save', function(next) {
 // Pre-find query to filter out inactive users
 userSchema.pre(/^find/, function(next) {
   // this points to the current query
-  this.find({ active: { $ne: false } });
+  this.find({ isActive: { $ne: false } });
   next();
 });
 
 // Instance method to check if password is correct
-userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
-  return await bcrypt.compare(candidatePassword, userPassword);
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Instance method to check if password changed after token issued
-userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
-  if (this.passwordChangedAt) {
-    const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
-    return JWTTimestamp < changedTimestamp;
-  }
-  // False means NOT changed
-  return false;
-};
-
-// Instance method to generate password reset token
+// Create password reset token
 userSchema.methods.createPasswordResetToken = function() {
   const resetToken = crypto.randomBytes(32).toString('hex');
 
@@ -111,6 +129,34 @@ userSchema.methods.createPasswordResetToken = function() {
 
   return resetToken;
 };
+
+// Create email verification token
+userSchema.methods.createEmailVerificationToken = function() {
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+
+  this.emailVerificationToken = crypto
+    .createHash('sha256')
+    .update(verificationToken)
+    .digest('hex');
+
+  this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+  return verificationToken;
+};
+
+// Generate JWT token
+userSchema.methods.generateToken = function() {
+  return jwt.sign(
+    { userId: this._id, role: this.role, hospitalId: this.hospital },
+    process.env.JWT_SECRET,
+    { expiresIn: '1d' }
+  );
+};
+
+// Virtual for full name
+userSchema.virtual('fullName').get(function() {
+  return `${this.firstName} ${this.lastName}`;
+});
 
 const User = mongoose.model('User', userSchema);
 
