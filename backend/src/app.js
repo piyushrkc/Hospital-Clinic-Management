@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const authRoutes = require('./routes/authRoutes');
 
 const app = express();
+const userRoutes = require('./routes/userRoutes');
 
 // Middleware
 app.use(helmet()); // Security headers
