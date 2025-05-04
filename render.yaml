@@ -5,9 +5,17 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: cd backend && npm install
+    buildCommand: cd backend && npm ci --omit=dev
     startCommand: cd backend && npm start
     healthCheckPath: /api/health
+    nodeVersion: 18
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**/*
+    prebuild:
+      commands:
+        - cd backend && echo "Running prebuild setup..."
     envVars:
       - key: NODE_ENV
         value: production
@@ -47,10 +55,18 @@ services:
     name: hms-frontend
     env: node
     region: oregon
-    buildCommand: cd frontend && npm ci && npm run build
+    buildCommand: cd frontend && npm ci --omit=dev && npm run build
     startCommand: cd frontend && npm start
     nodeVersion: 18
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - frontend/**/*
     envVars:
+      - key: CI
+        value: "true"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=2048"
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
