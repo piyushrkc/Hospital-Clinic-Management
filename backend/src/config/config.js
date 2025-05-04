@@ -1,8 +1,25 @@
 // src/config/config.js
 
-require('dotenv').config();
+const crypto = require('crypto');
+// Note: Environment variables are now loaded by loadEnv.js before this file is required
 
-module.exports = {
+// Generate a secure random JWT secret if not provided
+// This ensures that even if JWT_SECRET is not set, a secure random value is used
+// Note: In production, JWT_SECRET should be explicitly set in environment variables
+const generateSecureSecret = () => {
+  console.warn('WARNING: JWT_SECRET not set in environment. Using generated secret. This is not recommended for production.');
+  return crypto.randomBytes(64).toString('hex');
+};
+
+// Validate that we're not using default JWT secret in production
+const validateJwtSecret = (secret, env) => {
+  if (env === 'production' && (!secret || secret === 'your_jwt_secret_key_change_in_production')) {
+    throw new Error('JWT_SECRET must be explicitly set in production environment');
+  }
+  return secret || generateSecureSecret();
+};
+
+const config = {
   app: {
     port: process.env.PORT || 5000,
     env: process.env.NODE_ENV || 'development'
@@ -11,8 +28,9 @@ module.exports = {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hospital-management'
   },
   jwt: {
-    secret: process.env.JWT_SECRET || 'your-secret-key',
-    expiresIn: process.env.JWT_EXPIRES_IN || '1d'
+    secret: validateJwtSecret(process.env.JWT_SECRET, process.env.NODE_ENV),
+    expiresIn: process.env.JWT_EXPIRES_IN || '1d',
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
   },
   email: {
     host: process.env.EMAIL_HOST || 'smtp.example.com',
@@ -29,5 +47,39 @@ module.exports = {
     accountSid: process.env.TWILIO_ACCOUNT_SID,
     authToken: process.env.TWILIO_AUTH_TOKEN,
     from: process.env.TWILIO_PHONE_NUMBER
+  },
+  security: {
+    rateLimiting: {
+      window: parseInt(process.env.RATE_LIMIT_WINDOW || '15'), // minutes
+      max: parseInt(process.env.RATE_LIMIT_MAX || '100')
+    }
+  },
+  cache: {
+    enabled: process.env.CACHE_ENABLED === 'true' || false,
+    REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
+    ttl: {
+      default: parseInt(process.env.CACHE_DEFAULT_TTL || '600'), // 10 minutes
+      appointments: parseInt(process.env.CACHE_APPOINTMENTS_TTL || '300'), // 5 minutes
+      patients: parseInt(process.env.CACHE_PATIENTS_TTL || '900'), // 15 minutes
+      doctors: parseInt(process.env.CACHE_DOCTORS_TTL || '1800') // 30 minutes
+    }
   }
 };
+
+// Final validation to ensure critical production configs are set
+if (config.app.env === 'production') {
+  const requiredEnvVars = [
+    'JWT_SECRET',
+    'MONGODB_URI',
+    'EMAIL_USER',
+    'EMAIL_PASSWORD'
+  ];
+
+  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+  
+  if (missingVars.length > 0) {
+    throw new Error(`Missing required environment variables for production: ${missingVars.join(', ')}`);
+  }
+}
+
+module.exports = config;

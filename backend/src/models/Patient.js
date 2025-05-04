@@ -84,6 +84,17 @@ patientSchema.virtual('age').get(function() {
   return age;
 });
 
+// Create indexes for frequently queried fields
+patientSchema.index({ user: 1 });
+patientSchema.index({ 'insuranceInfo.provider': 1 });
+patientSchema.index({ 'insuranceInfo.policyNumber': 1 });
+patientSchema.index({ bloodGroup: 1 });
+patientSchema.index({ 'address.city': 1 });
+patientSchema.index({ 'address.zipCode': 1 });
+patientSchema.index({ allergies: 1 });
+patientSchema.index({ chronicDiseases: 1 });
+patientSchema.index({ dateOfBirth: 1 });
+
 const Patient = mongoose.model('Patient', patientSchema);
 
 module.exports = Patient;

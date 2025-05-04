@@ -68,9 +68,21 @@ const appointmentSchema = new mongoose.Schema({
 });
 
 // Indexing for faster queries
-appointmentSchema.index({ patient: 1, appointmentDate: 1 });
-appointmentSchema.index({ doctor: 1, appointmentDate: 1 });
+// Basic indexes for appointment lookup
+appointmentSchema.index({ patient: 1, appointmentDate: -1 });
+appointmentSchema.index({ doctor: 1, appointmentDate: -1 });
 appointmentSchema.index({ appointmentDate: 1, status: 1 });
+appointmentSchema.index({ status: 1 });
+
+// Compound indexes for common query patterns
+appointmentSchema.index({ doctor: 1, appointmentDate: 1, startTime: 1 });
+appointmentSchema.index({ hospital: 1, appointmentDate: 1 });
+appointmentSchema.index({ hospital: 1, status: 1, appointmentDate: -1 });
+appointmentSchema.index({ createdAt: -1 });
+appointmentSchema.index({ hospital: 1, appointmentDate: 1, startTime: 1, status: 1 });
+appointmentSchema.index({ doctor: 1, status: 1, appointmentDate: 1 });
+appointmentSchema.index({ patient: 1, status: 1, appointmentDate: 1 });
+appointmentSchema.index({ scheduledTime: 1 });
 
 // Calculate scheduledTime from appointmentDate and appointmentTime
 appointmentSchema.pre('save', function(next) {

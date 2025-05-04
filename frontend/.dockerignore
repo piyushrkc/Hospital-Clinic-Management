@@ -1,0 +1,50 @@
+# Dependency directories
+node_modules/
+.pnp/
+.pnp.js
+
+# Next.js build outputs
+.next/
+out/
+!.next/standalone/
+!.next/static/
+
+# Version control directories
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Cache
+.npm
+.eslintcache
+
+# Documentation
+README.md
+docs/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+coverage/
+.nyc_output/

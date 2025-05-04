@@ -5,3 +5,4 @@ coverage/
 build/
 dist/
 .vscode/
+**/.claude/settings.local.json

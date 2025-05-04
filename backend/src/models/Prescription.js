@@ -82,6 +82,13 @@ const prescriptionSchema = new mongoose.Schema({
 prescriptionSchema.index({ patient: 1, createdAt: -1 });
 prescriptionSchema.index({ doctor: 1, createdAt: -1 });
 prescriptionSchema.index({ status: 1 });
+prescriptionSchema.index({ appointment: 1 });
+prescriptionSchema.index({ createdAt: -1 });
+prescriptionSchema.index({ validUntil: 1 });
+prescriptionSchema.index({ patient: 1, status: 1 });
+prescriptionSchema.index({ doctor: 1, status: 1 });
+prescriptionSchema.index({ 'medications.medication': 1 });
+prescriptionSchema.index({ refillable: 1, refillsAllowed: 1, refillsUsed: 1 });
 
 // Set validUntil date based on creation date if not provided
 prescriptionSchema.pre('save', function(next) {

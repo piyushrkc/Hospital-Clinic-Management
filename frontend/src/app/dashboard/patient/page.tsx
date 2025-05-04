@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/context/auth-context';
+import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/utils';
 import Sidebar from '@/components/layout/sidebar';

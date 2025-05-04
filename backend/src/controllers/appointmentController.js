@@ -2,77 +2,97 @@
 const Appointment = require('../models/Appointment');
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
+const { paginationMetadata } = require('../middleware/pagination');
 
 // Get all appointments with filtering options
 exports.getAppointments = async (req, res) => {
   try {
-    const {
-      doctorId,
-      patientId,
-      date,
-      status,
-      startDate,
-      endDate,
-      page = 1,
-      limit = 10
-    } = req.query;
+    const { doctorId, patientId, date, status, startDate, endDate } = req.query;
+    
+    // Get pagination data from middleware
+    const { page, limit, skip, sort, projection } = req.pagination;
 
     // Base query object
-    const query = { hospital: req.user.hospital };
+    const query = { hospital: req.user.hospitalId };
 
-    // Add filters if provided
-    if (doctorId) query.doctor = doctorId;
-    if (patientId) query.patient = patientId;
-    if (status) query.status = status;
+    // Add filters if provided - use proper type casting
+    if (doctorId) query.doctor = mongoose.Types.ObjectId(doctorId);
+    if (patientId) query.patient = mongoose.Types.ObjectId(patientId);
+    if (status) {
+      // Allow for multiple status values
+      const statusValues = status.split(',');
+      query.status = statusValues.length > 1 ? { $in: statusValues } : status;
+    }
     
     // Filter by specific date
     if (date) {
       const searchDate = new Date(date);
+      if (isNaN(searchDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid date format'
+        });
+      }
+      
       query.appointmentDate = {
-        $gte: new Date(searchDate.setHours(0, 0, 0, 0)),
-        $lt: new Date(searchDate.setHours(23, 59, 59, 999))
+        $gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
+        $lt: new Date(new Date(date).setHours(23, 59, 59, 999))
       };
     }
     
     // Filter by date range
     if (startDate && endDate) {
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      
+      if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid date range format'
+        });
+      }
+      
       query.appointmentDate = {
-        $gte: new Date(new Date(startDate).setHours(0, 0, 0, 0)),
-        $lt: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+        $gte: new Date(startDateObj.setHours(0, 0, 0, 0)),
+        $lt: new Date(endDateObj.setHours(23, 59, 59, 999))
       };
     }
 
     // Role-based access control
     if (req.user.role === 'patient') {
-      query.patient = req.user.userId;
+      query.patient = mongoose.Types.ObjectId(req.user.userId);
     } else if (req.user.role === 'doctor') {
-      query.doctor = req.user.userId;
+      query.doctor = mongoose.Types.ObjectId(req.user.userId);
     }
-
-    // Calculate pagination values
-    const skip = (page - 1) * limit;
     
-    // Execute query with pagination
-    const appointments = await Appointment.find(query)
-      .populate('patient', 'firstName lastName email phoneNumber')
-      .populate('doctor', 'firstName lastName specialization')
-      .sort({ appointmentDate: 1, startTime: 1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    // Set default sort if not provided
+    const sortOptions = sort || { appointmentDate: 1, startTime: 1 };
     
-    // Get total count for pagination
-    const totalAppointments = await Appointment.countDocuments(query);
+    // Use Promise.all to run queries in parallel
+    const [appointments, totalAppointments] = await Promise.all([
+      Appointment.find(query, projection)
+        .populate('patient', 'firstName lastName email phoneNumber')
+        .populate('doctor', 'firstName lastName specialization')
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(limit)
+        .lean(), // Use lean() for better performance when you don't need Mongoose documents
+      
+      Appointment.countDocuments(query)
+    ]);
     
+    // Get pagination metadata
+    const pagination = paginationMetadata(totalAppointments, req.pagination);
+    
+    // Add pagination metadata to response
     res.status(200).json({
       success: true,
-      count: appointments.length,
-      total: totalAppointments,
-      totalPages: Math.ceil(totalAppointments / limit),
-      currentPage: parseInt(page),
-      appointments
+      pagination,
+      data: appointments
     });
   } catch (error) {
-    console.error('Error fetching appointments:', error);
+    logger.error('Error fetching appointments', { error, userId: req.user?.userId });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch appointments',
@@ -84,10 +104,28 @@ exports.getAppointments = async (req, res) => {
 // Get appointment by ID
 exports.getAppointmentById = async (req, res) => {
   try {
-    const appointment = await Appointment.findById(req.params.id)
+    // Validate appointment ID format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid appointment ID format'
+      });
+    }
+    
+    // Only select the fields we need for better performance
+    const fieldsToSelect = req.query.fields ? 
+      req.query.fields.split(',').join(' ') : 
+      '';
+
+    // Use projection to improve query performance if fields are specified
+    const appointment = await Appointment.findById(
+      req.params.id, 
+      fieldsToSelect
+    )
       .populate('patient', 'firstName lastName email phoneNumber profileImage')
       .populate('doctor', 'firstName lastName specialization profileImage')
-      .populate('createdBy', 'firstName lastName');
+      .populate('createdBy', 'firstName lastName')
+      .lean(); // Use lean() for better performance
     
     if (!appointment) {
       return res.status(404).json({
@@ -98,10 +136,17 @@ exports.getAppointmentById = async (req, res) => {
 
     // Check if user has permission to view the appointment
     if (
-      req.user.role === 'patient' && appointment.patient._id.toString() !== req.user.userId &&
-      req.user.role === 'doctor' && appointment.doctor._id.toString() !== req.user.userId &&
-      req.user.role !== 'admin' && req.user.role !== 'receptionist'
+      (req.user.role === 'patient' && appointment.patient._id.toString() !== req.user.userId) &&
+      (req.user.role === 'doctor' && appointment.doctor._id.toString() !== req.user.userId) &&
+      req.user.role !== 'admin' && 
+      req.user.role !== 'receptionist'
     ) {
+      logger.warn('Unauthorized appointment access attempt', {
+        userId: req.user.userId,
+        appointmentId: req.params.id,
+        userRole: req.user.role
+      });
+      
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view this appointment'
@@ -113,7 +158,12 @@ exports.getAppointmentById = async (req, res) => {
       appointment
     });
   } catch (error) {
-    console.error('Error fetching appointment:', error);
+    logger.error('Error fetching appointment', { 
+      error, 
+      appointmentId: req.params.id,
+      userId: req.user?.userId 
+    });
+    
     res.status(500).json({
       success: false,
       message: 'Failed to fetch appointment',

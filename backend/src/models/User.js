@@ -158,6 +158,17 @@ userSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`;
 });
 
+// Create indexes for frequently queried fields
+userSchema.index({ email: 1 });
+userSchema.index({ role: 1 });
+userSchema.index({ hospital: 1, role: 1 });
+userSchema.index({ hospital: 1, isActive: 1 });
+userSchema.index({ lastName: 1, firstName: 1 });
+userSchema.index({ email: 1, hospital: 1 });
+userSchema.index({ 'address.city': 1, hospital: 1 });
+userSchema.index({ passwordResetToken: 1, passwordResetExpires: 1 });
+userSchema.index({ emailVerificationToken: 1, emailVerificationExpires: 1 });
+
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;

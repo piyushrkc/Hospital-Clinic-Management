@@ -10,8 +10,12 @@ const billingRoutes = require('./billingRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const reportRoutes = require('./reportRoutes');
 const uploadRoutes = require('./uploadRoutes');
+const healthRoutes = require('./healthRoutes');
 
 const router = express.Router();
+
+// Health check routes
+router.use('/health', healthRoutes);
 
 // API routes
 router.use('/auth', authRoutes);

@@ -1,0 +1,104 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Backend CI", "Frontend CI"]
+    types:
+      - completed
+    branches:
+      - main
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  deploy:
+    # Only run if the CI workflows completed successfully
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    runs-on: ubuntu-latest
+    
+    # Use environment variables based on the target environment
+    env:
+      DEPLOY_ENV: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up environment-specific variables
+        run: |
+          if [[ "$DEPLOY_ENV" == "production" ]]; then
+            echo "DEPLOY_SERVER=${{ secrets.PROD_SERVER }}" >> $GITHUB_ENV
+            echo "DEPLOY_USER=${{ secrets.PROD_SSH_USER }}" >> $GITHUB_ENV
+            echo "DEPLOY_PATH=${{ secrets.PROD_DEPLOY_PATH }}" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_SERVER=${{ secrets.STAGING_SERVER }}" >> $GITHUB_ENV
+            echo "DEPLOY_USER=${{ secrets.STAGING_SSH_USER }}" >> $GITHUB_ENV
+            echo "DEPLOY_PATH=${{ secrets.STAGING_DEPLOY_PATH }}" >> $GITHUB_ENV
+          fi
+      
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      
+      - name: Add known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ env.DEPLOY_SERVER }} >> ~/.ssh/known_hosts
+      
+      # Copy Docker Compose files to the server
+      - name: Copy deployment files
+        run: |
+          scp docker-compose.yml ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }}:${{ env.DEPLOY_PATH }}/
+          scp .env.${{ env.DEPLOY_ENV }} ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }}:${{ env.DEPLOY_PATH }}/.env
+      
+      # Pull the latest images and restart containers
+      - name: Deploy with Docker Compose
+        run: |
+          ssh ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+            # Pull the latest images
+            docker-compose pull
+            
+            # Restart services
+            docker-compose down
+            docker-compose up -d
+            
+            # Clean up unused images
+            docker image prune -f
+          EOF
+      
+      - name: Verify deployment
+        run: |
+          ssh ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+            # Check if containers are running
+            docker-compose ps
+            
+            # Check backend health
+            BACKEND_HEALTH=$(curl -s http://localhost:5000/api/health || echo "Failed to connect")
+            echo "Backend health check result: $BACKEND_HEALTH"
+            
+            # Check frontend
+            FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "Failed to connect")
+            echo "Frontend status code: $FRONTEND_STATUS"
+          EOF
+      
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "Deployment to ${{ env.DEPLOY_ENV }} completed successfully!"
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Deployment to ${{ env.DEPLOY_ENV }} failed!"

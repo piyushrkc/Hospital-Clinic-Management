@@ -2,6 +2,38 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Hospital = require('../models/Hospital');
+const RefreshToken = require('../models/RefreshToken');
+const config = require('../config/config');
+
+/**
+ * Helper function to generate access and refresh tokens
+ */
+const generateTokens = async (user, req) => {
+  // Generate access token with shorter expiry
+  const accessToken = jwt.sign(
+    { 
+      userId: user._id, 
+      role: user.role, 
+      hospitalId: user.hospital._id || user.hospital 
+    },
+    config.jwt.secret,
+    { expiresIn: config.jwt.expiresIn }
+  );
+
+  // Generate refresh token with longer expiry
+  const refreshTokenDoc = await RefreshToken.generateToken(
+    user._id,
+    req.ip,
+    req.headers['user-agent'],
+    parseInt(config.jwt.refreshExpiresIn) || 7
+  );
+
+  return {
+    accessToken,
+    refreshToken: refreshTokenDoc.token,
+    expiresIn: config.jwt.expiresIn
+  };
+};
 
 // Register user
 exports.register = async (req, res) => {
@@ -45,17 +77,25 @@ exports.register = async (req, res) => {
 
     await user.save();
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role, hospitalId: user.hospital },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    // Load the user with populated hospital for token generation
+    const populatedUser = await User.findById(user._id).populate('hospital');
+    
+    // Generate tokens
+    const tokens = await generateTokens(populatedUser, req);
+
+    // Set refresh token as HTTP-only cookie
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: config.app.env === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
 
     res.status(201).json({
       message: 'User registered successfully',
-      token,
-      user: user.toJSON()
+      accessToken: tokens.accessToken,
+      user: populatedUser.toJSON(),
+      expiresIn: tokens.expiresIn
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -89,17 +129,22 @@ exports.login = async (req, res) => {
     user.lastLogin = Date.now();
     await user.save();
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role, hospitalId: user.hospital._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    // Generate access and refresh tokens
+    const tokens = await generateTokens(user, req);
+
+    // Set refresh token as HTTP-only cookie
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: config.app.env === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
 
     res.status(200).json({
       message: 'Login successful',
-      token,
+      accessToken: tokens.accessToken,
       user: user.toJSON(),
+      expiresIn: tokens.expiresIn,
       hospital: {
         id: user.hospital._id,
         name: user.hospital.name,
@@ -130,14 +175,92 @@ exports.getCurrentUser = async (req, res) => {
   }
 };
 
-// Logout (just for completing the API - JWT invalidation will be handled on client side)
-exports.logout = async (req, res) => {
-  // JWT tokens are stateless, so actual logout happens on client
-  // by removing the token. This endpoint is mostly for completeness.
+// Refresh token endpoint - issue a new access token using refresh token
+exports.refreshToken = async (req, res) => {
   try {
-    // Could implement token blacklisting here if needed
+    // Get refresh token from cookie
+    const refreshToken = req.cookies?.refreshToken;
+    
+    if (!refreshToken) {
+      return res.status(401).json({ message: 'Refresh token is required' });
+    }
+    
+    // Verify refresh token exists and is valid
+    const foundToken = await RefreshToken.findValidToken(refreshToken);
+    
+    if (!foundToken) {
+      return res.status(403).json({ message: 'Invalid or expired refresh token' });
+    }
+    
+    // Check if user agent matches to prevent token theft
+    if (foundToken.userAgent && foundToken.userAgent !== req.headers['user-agent']) {
+      // Potential token theft - revoke token
+      await foundToken.revoke();
+      return res.status(403).json({ message: 'Token security check failed' });
+    }
+    
+    // Generate new access token
+    const accessToken = jwt.sign(
+      { 
+        userId: foundToken.user._id, 
+        role: foundToken.user.role, 
+        hospitalId: foundToken.user.hospital 
+      },
+      config.jwt.secret,
+      { expiresIn: config.jwt.expiresIn }
+    );
+    
+    res.status(200).json({
+      accessToken,
+      expiresIn: config.jwt.expiresIn
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(500).json({ message: 'Failed to refresh token', error: error.message });
+  }
+};
+
+// Logout
+exports.logout = async (req, res) => {
+  try {
+    // Get refresh token from cookie
+    const refreshToken = req.cookies?.refreshToken;
+    
+    // Clear refresh token cookie regardless of whether token exists
+    res.clearCookie('refreshToken');
+    
+    // If token exists, revoke it in database
+    if (refreshToken) {
+      const tokenDoc = await RefreshToken.findOne({ token: refreshToken });
+      if (tokenDoc) {
+        await tokenDoc.revoke();
+      }
+    }
+    
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
+    console.error('Logout error:', error);
     res.status(500).json({ message: 'Logout failed', error: error.message });
+  }
+};
+
+// Revoke all user sessions
+exports.revokeAllSessions = async (req, res) => {
+  try {
+    // User must be authenticated and token must contain userId
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    // Revoke all refresh tokens for the user
+    await RefreshToken.revokeAllUserTokens(req.user.userId);
+    
+    // Clear current session cookie
+    res.clearCookie('refreshToken');
+    
+    res.status(200).json({ message: 'All sessions revoked successfully' });
+  } catch (error) {
+    console.error('Session revocation error:', error);
+    res.status(500).json({ message: 'Failed to revoke sessions', error: error.message });
   }
 };
