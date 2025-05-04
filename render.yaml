@@ -1,5 +1,5 @@
 services:
-  # Backend API Service
+  # Backend API Service - Simple Configuration
   - type: web
     name: hms-backend
     env: node
@@ -9,13 +9,6 @@ services:
     startCommand: cd backend && npm start
     healthCheckPath: /api/health
     nodeVersion: 18
-    autoDeploy: true
-    buildFilter:
-      paths:
-        - backend/**/*
-    prebuild:
-      commands:
-        - cd backend && echo "Running prebuild setup..."
     envVars:
       - key: NODE_ENV
         value: production
@@ -50,18 +43,12 @@ services:
       - key: TWILIO_MESSAGING_SERVICE_SID
         sync: false
 
-  # Frontend Next.js App
-  - type: web
+  # Frontend as static site
+  - type: static
     name: hms-frontend
-    env: node
-    region: oregon
-    buildCommand: cd frontend && npm ci --omit=dev && npm run build
-    startCommand: cd frontend && npm start
-    nodeVersion: 18
-    autoDeploy: true
-    buildFilter:
-      paths:
-        - frontend/**/*
+    buildCommand: cd frontend && npm ci && npm run build
+    publishDir: frontend/out
+    pullRequestPreviewsEnabled: true
     envVars:
       - key: CI
         value: "true"
@@ -80,11 +67,9 @@ services:
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
         sync: false
 
-  # Redis Cache
+  # Redis Cache - Simple configuration
   - type: redis
     name: hms-redis
-    region: oregon
-    ipAllowList: [] # Only allow internal connections
     plan: free
 
 # Database is created separately on MongoDB Atlas
