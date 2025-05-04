@@ -10,49 +10,29 @@ class CacheService {
   constructor() {
     this.isConnected = false;
     this.client = null;
-    this.getAsync = null;
-    this.setexAsync = null;
-    this.delAsync = null;
-    this.flushallAsync = null;
-    this.keysAsync = null;
     this.connect();
   }
 
-  connect() {
+  async connect() {
     try {
-      // Create Redis client
-      const redisUrl = config.REDIS_URL || 'redis://localhost:6379';
+      // Get Redis URL from config
+      const redisUrl = config.cache?.REDIS_URL || 'redis://localhost:6379';
+      
+      // Create Redis client (Redis 5.0.0+ uses different API)
       this.client = redis.createClient({
         url: redisUrl,
-        retry_strategy: (options) => {
-          if (options.error && options.error.code === 'ECONNREFUSED') {
-            // End reconnecting on a specific error
-            logger.error('Redis connection refused', { error: options.error });
-            return new Error('The server refused the connection');
+        socket: {
+          reconnectStrategy: (retries) => {
+            if (retries > 10) {
+              logger.error('Redis max retry attempts reached', { attempts: retries });
+              return new Error('Max retry attempts reached');
+            }
+            return Math.min(retries * 100, 3000);
           }
-          if (options.total_retry_time > 1000 * 60 * 60) {
-            // End reconnecting after 1 hour
-            logger.error('Redis retry time exhausted', { total_retry_time: options.total_retry_time });
-            return new Error('Retry time exhausted');
-          }
-          if (options.attempt > 10) {
-            // End reconnecting after 10 attempts
-            logger.error('Redis max retry attempts reached', { attempts: options.attempt });
-            return new Error('Max retry attempts reached');
-          }
-          // Reconnect after
-          return Math.min(options.attempt * 100, 3000);
-        },
+        }
       });
 
-      // Promisify Redis methods
-      this.getAsync = promisify(this.client.get).bind(this.client);
-      this.setexAsync = promisify(this.client.setex).bind(this.client);
-      this.delAsync = promisify(this.client.del).bind(this.client);
-      this.flushallAsync = promisify(this.client.flushall).bind(this.client);
-      this.keysAsync = promisify(this.client.keys).bind(this.client);
-
-      // Event listeners
+      // Set up event listeners before connecting
       this.client.on('connect', () => {
         this.isConnected = true;
         logger.info('Redis client connected');
@@ -67,6 +47,10 @@ class CacheService {
         this.isConnected = false;
         logger.info('Redis client disconnected');
       });
+
+      // Connect to Redis server
+      await this.client.connect();
+      
     } catch (error) {
       logger.error('Error initializing Redis client', { error: error.message });
       this.isConnected = false;
@@ -95,10 +79,10 @@ class CacheService {
    * @returns {Promise<Object|null>} Cached data or null
    */
   async get(key) {
-    if (!this.isConnected) return null;
+    if (!this.isConnected || !this.client) return null;
     
     try {
-      const data = await this.getAsync(key);
+      const data = await this.client.get(key);
       return data ? JSON.parse(data) : null;
     } catch (error) {
       logger.error('Cache get error', { key, error: error.message });
@@ -114,11 +98,11 @@ class CacheService {
    * @returns {Promise<Boolean>} Success flag
    */
   async set(key, data, ttl = DEFAULT_TTL) {
-    if (!this.isConnected) return false;
+    if (!this.isConnected || !this.client) return false;
     
     try {
       const serialized = JSON.stringify(data);
-      await this.setexAsync(key, ttl, serialized);
+      await this.client.setEx(key, ttl, serialized);
       return true;
     } catch (error) {
       logger.error('Cache set error', { key, error: error.message });
@@ -132,10 +116,10 @@ class CacheService {
    * @returns {Promise<Boolean>} Success flag
    */
   async del(key) {
-    if (!this.isConnected) return false;
+    if (!this.isConnected || !this.client) return false;
     
     try {
-      await this.delAsync(key);
+      await this.client.del(key);
       return true;
     } catch (error) {
       logger.error('Cache delete error', { key, error: error.message });
@@ -148,10 +132,10 @@ class CacheService {
    * @returns {Promise<Boolean>} Success flag
    */
   async flush() {
-    if (!this.isConnected) return false;
+    if (!this.isConnected || !this.client) return false;
     
     try {
-      await this.flushallAsync();
+      await this.client.flushAll();
       return true;
     } catch (error) {
       logger.error('Cache flush error', { error: error.message });
@@ -165,13 +149,13 @@ class CacheService {
    * @returns {Promise<Number>} Number of keys deleted
    */
   async clearPattern(pattern) {
-    if (!this.isConnected) return 0;
+    if (!this.isConnected || !this.client) return 0;
     
     try {
-      const keys = await this.keysAsync(pattern);
+      const keys = await this.client.keys(pattern);
       if (keys.length === 0) return 0;
       
-      await this.delAsync(keys);
+      await this.client.del(keys);
       return keys.length;
     } catch (error) {
       logger.error('Cache clear pattern error', { pattern, error: error.message });
@@ -182,9 +166,9 @@ class CacheService {
   /**
    * Close Redis connection
    */
-  close() {
+  async close() {
     if (this.client) {
-      this.client.quit();
+      await this.client.quit();
       this.isConnected = false;
     }
   }

@@ -146,10 +146,13 @@ userSchema.methods.createEmailVerificationToken = function() {
 
 // Generate JWT token
 userSchema.methods.generateToken = function() {
+  const jwt = require('jsonwebtoken');
+  const config = require('../config/config');
+  
   return jwt.sign(
     { userId: this._id, role: this.role, hospitalId: this.hospital },
-    process.env.JWT_SECRET,
-    { expiresIn: '1d' }
+    config.jwt.secret,
+    { expiresIn: config.jwt.expiresIn }
   );
 };
 

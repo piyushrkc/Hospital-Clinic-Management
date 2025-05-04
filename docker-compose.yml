@@ -23,6 +23,25 @@ services:
       retries: 3
       start_period: 10s
 
+  # Redis cache service
+  redis:
+    image: redis:7-alpine
+    container_name: hms-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - hms-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    command: redis-server --save 60 1 --loglevel warning
+
   # Backend API service
   backend:
     build:
@@ -34,6 +53,8 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=5000
@@ -42,6 +63,15 @@ services:
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
       - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - CACHE_ENABLED=true
+      - REDIS_URL=redis://redis:6379
+      # Email configuration
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      # Twilio configuration
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_MESSAGING_SERVICE_SID=${TWILIO_MESSAGING_SERVICE_SID}
     ports:
       - "5000:5000"
     networks:
@@ -68,6 +98,8 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
       - NEXT_PUBLIC_API_URL=http://backend:5000/api
       - NEXT_PUBLIC_APP_ENV=${NODE_ENV:-production}
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     ports:
       - "3000:3000"
     networks:
@@ -85,4 +117,6 @@ networks:
 
 volumes:
   mongodb-data:
+    driver: local
+  redis-data:
     driver: local

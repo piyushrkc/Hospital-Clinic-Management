@@ -1,0 +1,5 @@
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:23:57:2357"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:25:24:2524"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:39:08:398"}

@@ -33,6 +33,7 @@ const config = {
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
   },
   email: {
+    // SMTP configuration (legacy)
     host: process.env.EMAIL_HOST || 'smtp.example.com',
     port: parseInt(process.env.EMAIL_PORT || '587'),
     secure: process.env.EMAIL_SECURE === 'true',
@@ -40,13 +41,16 @@ const config = {
       user: process.env.EMAIL_USER || 'user@example.com',
       pass: process.env.EMAIL_PASSWORD || 'password'
     },
+    // Resend configuration (preferred)
+    resendApiKey: process.env.RESEND_API_KEY,
+    provider: process.env.EMAIL_PROVIDER || 'resend', // 'resend' or 'smtp'
     from: process.env.EMAIL_FROM || 'Hospital Management <noreply@hospital.com>'
   },
   sms: {
     provider: process.env.SMS_PROVIDER || 'twilio',
     accountSid: process.env.TWILIO_ACCOUNT_SID,
     authToken: process.env.TWILIO_AUTH_TOKEN,
-    from: process.env.TWILIO_PHONE_NUMBER
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID
   },
   security: {
     rateLimiting: {

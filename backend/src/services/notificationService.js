@@ -1,7 +1,8 @@
 // src/services/notificationService.js
 
-const nodemailer = require('nodemailer');
 const config = require('../config/config');
+const logger = require('../utils/logger');
+const emailService = require('./emailService');
 
 /**
  * Notification Service
@@ -9,17 +10,6 @@ const config = require('../config/config');
  */
 class NotificationService {
   constructor() {
-    // Initialize email transporter
-    this.emailTransporter = nodemailer.createTransport({
-      host: config.email.host,
-      port: config.email.port,
-      secure: config.email.secure,
-      auth: {
-        user: config.email.auth.user,
-        pass: config.email.auth.pass
-      }
-    });
-
     // Initialize SMS provider (e.g., Twilio)
     if (config.sms.provider === 'twilio') {
       this.smsClient = require('twilio')(
@@ -38,21 +28,21 @@ class NotificationService {
    * @param {string} options.html - HTML content (optional)
    * @returns {Promise} - Promise resolving to sent message info
    */
-  async sendEmail({ to, subject, text, html }) {
+  async sendEmail(options) {
     try {
-      const mailOptions = {
-        from: config.email.from,
-        to,
-        subject,
-        text,
-        html: html || text
-      };
-
-      const info = await this.emailTransporter.sendMail(mailOptions);
-      console.log('Email sent:', info.messageId);
-      return info;
+      // Use the specialized email service to send emails
+      const result = await emailService.sendEmail(options);
+      logger.info('Email sent through notification service', { 
+        to: options.to, 
+        subject: options.subject
+      });
+      return result;
     } catch (error) {
-      console.error('Error sending email:', error);
+      logger.error('Error sending email through notification service', { 
+        error: error.message,
+        to: options.to,
+        subject: options.subject
+      });
       throw error;
     }
   }
@@ -72,7 +62,7 @@ class NotificationService {
 
       const message = await this.smsClient.messages.create({
         body,
-        from: config.sms.from,
+        messagingServiceSid: config.sms.messagingServiceSid,
         to
       });
       

@@ -11,6 +11,7 @@ const notificationRoutes = require('./notificationRoutes');
 const reportRoutes = require('./reportRoutes');
 const uploadRoutes = require('./uploadRoutes');
 const healthRoutes = require('./healthRoutes');
+const testRoutes = require('./testRoutes');
 
 const router = express.Router();
 
@@ -29,5 +30,6 @@ router.use('/billing', billingRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/reports', reportRoutes);
 router.use('/uploads', uploadRoutes);
+router.use('/test', testRoutes);
 
 module.exports = router;

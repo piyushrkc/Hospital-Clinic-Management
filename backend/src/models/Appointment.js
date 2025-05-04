@@ -11,6 +11,11 @@ const appointmentSchema = new mongoose.Schema({
     ref: 'Doctor',
     required: [true, 'Appointment must be with a doctor']
   },
+  hospital: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hospital',
+    required: [true, 'Appointment must be associated with a hospital']
+  },
   appointmentDate: {
     type: Date,
     required: [true, 'Appointment date is required']

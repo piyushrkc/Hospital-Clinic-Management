@@ -1,0 +1,73 @@
+services:
+  # Backend API Service
+  - type: web
+    name: hms-backend
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: Hospital Management <noreply@resend.dev>
+      - key: CACHE_ENABLED
+        value: true
+      - key: REDIS_URL
+        sync: false
+      - key: CACHE_DEFAULT_TTL
+        value: 600
+      - key: CORS_ORIGIN
+        value: https://hms-frontend.onrender.com
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+
+  # Frontend Next.js App
+  - type: web
+    name: hms-frontend
+    env: node
+    region: oregon
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://hms-backend.onrender.com/api
+      - key: NEXT_PUBLIC_APP_ENV
+        value: production
+      - key: NEXT_PUBLIC_HOSPITAL_SUBDOMAIN
+        value: general
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+
+  # Redis Cache
+  - type: redis
+    name: hms-redis
+    region: oregon
+    ipAllowList: [] # Only allow internal connections
+    plan: free
+
+# Database is created separately on MongoDB Atlas

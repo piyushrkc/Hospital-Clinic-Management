@@ -1,0 +1,26 @@
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:23:57:2357"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:25:24:2524"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:25:25:2525"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":false,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:25:25:2525"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":false,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":false,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:29:11:2911"}
+{"level":"error","message":"Error initializing Redis client","metadata":{"error":"The \"original\" argument must be of type function. Received undefined"},"timestamp":"2025-05-04 11:39:08:398"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:39:08:398"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":true,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:39:08:398"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:41:45:4145"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":true,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:41:45:4145"}
+{"level":"info","message":"Redis client connected","metadata":{},"timestamp":"2025-05-04 11:41:45:4145"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:43:36:4336"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":true,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:43:36:4336"}
+{"level":"info","message":"Redis client connected","metadata":{},"timestamp":"2025-05-04 11:43:36:4336"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:44:21:4421"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":true,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:44:21:4421"}
+{"level":"info","message":"Redis client connected","metadata":{},"timestamp":"2025-05-04 11:44:21:4421"}
+{"level":"info","message":"Email service initialized with Resend","metadata":{},"timestamp":"2025-05-04 11:55:21:5521"}
+{"level":"info","message":"Server running in development environment on port 5000","metadata":{},"timestamp":"2025-05-04 11:55:21:5521"}
+{"level":"info","message":"Configuration loaded","metadata":{"cacheEnabled":true,"corsOrigin":"http://localhost:3000","database":"mongodb://localhost:27017/hospital-management-dev","emailService":"smtp.mailtrap.io","environment":"development","jwtExpiration":"1d"},"timestamp":"2025-05-04 11:55:21:5521"}
+{"level":"info","message":"Redis client connected","metadata":{},"timestamp":"2025-05-04 11:55:21:5521"}
