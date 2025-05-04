@@ -43,10 +43,10 @@ services:
       - key: TWILIO_MESSAGING_SERVICE_SID
         sync: false
 
-  # Frontend as static site
+  # Frontend as static site - using minimal build
   - type: static
     name: hms-frontend
-    buildCommand: cd frontend && npm ci && npm run build
+    buildCommand: cd frontend && NODE_OPTIONS=--max_old_space_size=512 npm ci --legacy-peer-deps && npm run build
     publishDir: frontend/out
     pullRequestPreviewsEnabled: true
     envVars:
